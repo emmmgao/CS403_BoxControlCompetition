@@ -69,6 +69,8 @@
                   <geom name="box_outer" type="box" size="0.1 0.035 0.035" condim="3" contype="1" conaffinity="1" solimp="0.99 0.99 0.0001 0.1 4"/>
                   <!-- <geom name="capsule_EE" type="capsule" size="0.1 0.035 0.035" condim="3" contype="1" conaffinity="1" /> -->
                   <!-- <geom name="EE_box" type="box" type="box" size="0.1 0.1 0.1"/> -->
+                  <site name="ee_site" pos="0.1 0 0" size="0.005" rgba="0 0 1 1"/>
+
                 </body>
               </body>
             </body>
