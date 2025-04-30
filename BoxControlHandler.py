@@ -14,20 +14,18 @@ class BoxControlHandle:
 
     def _get_ee_position(self):
         return self.d.xpos[self.ee_id].copy()
-  
+
     def _get_ee_orientation(self):
         return self.d.xquat[self.ee_id].copy()
-    
-    #set the difficulty (0,1]  
+
     def set_difficulty(self,d):
         self.tolerance = 5e-3
         self.amp = d*0.1
         self.freq = d*2
-    
-    
+
     def get_diff_params(self):
         return(self.tolerance,self.amp,self.freq)
-    
+
     def print_diff_params(self):
         print(self.tolerance,self.amp,self.freq)
 
@@ -41,7 +39,7 @@ class BoxControlHandle:
         box_sensor2_idx = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_SENSOR, "mould_pos_sensor2")
         box_sensor3_idx = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_SENSOR, "mould_pos_sensor3")
         box_sensor4_idx = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_SENSOR, "mould_pos_sensor4") 
-    
+
         boxmould_pos1 = self.d.sensordata[box_sensor1_idx*3:box_sensor1_idx*3+3]
         boxmould_pos2 = self.d.sensordata[box_sensor2_idx*3:box_sensor2_idx*3+3]
         boxmould_pos3 = self.d.sensordata[box_sensor3_idx*3:box_sensor3_idx*3+3]
@@ -51,11 +49,11 @@ class BoxControlHandle:
         target_ori = self.rotate_quat_90_y(box_ori)
 
         final_position = self.box_midpoint(boxmould_pos1, boxmould_pos2, boxmould_pos3, boxmould_pos4)
-   
+
         target_ori_rtx = self.quat2SO3(target_ori)
         mid_target = final_position + target_ori_rtx @ np.array([-0.15,0,0.0])
         final_position += target_ori_rtx @ np.array([0.02,0,0.0])
-    
+
         pre_time = 3
         if self.d.time < pre_time:
             target_position = mid_target 
@@ -64,6 +62,93 @@ class BoxControlHandle:
         EE_pos = self._get_ee_position()
         pos_err = (target_position - EE_pos)
         return pos_err
+
+    def get_target_pos_ori_by_state(self, state, EE_pos):
+        name2id = mujoco.mj_name2id  # fix for sensor_name2id compatibility
+        s1 = self.d.sensordata[name2id(self.m, mujoco.mjtObj.mjOBJ_SENSOR, "mould_pos_sensor1")*3:][:3]
+        s2 = self.d.sensordata[name2id(self.m, mujoco.mjtObj.mjOBJ_SENSOR, "mould_pos_sensor2")*3:][:3]
+        s3 = self.d.sensordata[name2id(self.m, mujoco.mjtObj.mjOBJ_SENSOR, "mould_pos_sensor3")*3:][:3]
+        s4 = self.d.sensordata[name2id(self.m, mujoco.mjtObj.mjOBJ_SENSOR, "mould_pos_sensor4")*3:][:3]
+
+        q, _ = self.box_orientation(s1, s2, s3, s4)
+        target_ori = self.rotate_quat_90_y(q)
+        target_ori_rtx = self.quat2SO3(target_ori)
+        center = self.box_midpoint(s1, s2, s3, s4)
+
+        if state == 'prepare':
+            pos = center + target_ori_rtx @ np.array([-0.25, 0.0, 0.15])
+        elif state == 'align':
+            pos = center + target_ori_rtx @ np.array([-0.15, 0.0, 0.05])
+        elif state == 'insert':
+            pos = center + target_ori_rtx @ np.array([0.02, 0.0, 0.0])
+        else:
+            pos = EE_pos
+
+        return pos - EE_pos, target_ori
+
+    def get_target_normal(self):
+        name2id = mujoco.mj_name2id
+        s1 = self.d.sensordata[name2id(self.m, mujoco.mjtObj.mjOBJ_SENSOR, "mould_pos_sensor1") * 3:][:3]
+        s2 = self.d.sensordata[name2id(self.m, mujoco.mjtObj.mjOBJ_SENSOR, "mould_pos_sensor2") * 3:][:3]
+        s3 = self.d.sensordata[name2id(self.m, mujoco.mjtObj.mjOBJ_SENSOR, "mould_pos_sensor3") * 3:][:3]
+        s4 = self.d.sensordata[name2id(self.m, mujoco.mjtObj.mjOBJ_SENSOR, "mould_pos_sensor4") * 3:][:3]
+        _, normal = self.box_orientation(s1, s2, s3, s4)
+        return normal
+
+    def box_orientation(self, p1, p2, p3, p4):
+        p1, p2, p3, p4 = map(np.array, (p1, p2, p3, p4))
+        v1 = p2 - p1
+        v2 = p3 - p1
+
+        normal = np.cross(v1, v2)
+        norm_val = np.linalg.norm(normal)
+        if np.isnan(norm_val) or norm_val < 1e-6:
+            print("[WARN] invalid normal vector (NaN or near-zero), using default Z-axis.")
+            normal = np.array([0.0, 0.0, 1.0])
+        else:
+            normal /= norm_val
+
+        if normal[2] < 0:
+            normal = -normal
+
+        if np.abs(normal[0]) > np.abs(normal[1]):
+            x_axis = np.cross([0, 1, 0], normal)
+        else:
+            x_axis = np.cross([1, 0, 0], normal)
+
+        x_norm = np.linalg.norm(x_axis)
+        if np.isnan(x_norm) or x_norm < 1e-6:
+            print("[WARN] x_axis too small or NaN, using default X-axis.")
+            x_axis = np.array([1.0, 0.0, 0.0])
+        else:
+            x_axis /= x_norm
+
+        y_axis = np.cross(normal, x_axis)
+        y_norm = np.linalg.norm(y_axis)
+        if np.isnan(y_norm) or y_norm < 1e-6:
+            print("[WARN] y_axis too small or NaN, using fallback.")
+            y_axis = np.array([0.0, 1.0, 0.0])
+        else:
+            y_axis /= y_norm
+
+        R_matrix = np.column_stack((x_axis, y_axis, normal))
+        R_matrix += 1e-6 * np.eye(3)  # add a small jitter to stabilize
+
+        try:
+            U, _, Vt = np.linalg.svd(R_matrix)
+            R_matrix = U @ Vt
+        except np.linalg.LinAlgError:
+            print("SVD failed. Using identity matrix.")
+            R_matrix = np.eye(3)
+
+        quaternion = self.SO32quat(R_matrix)
+        return quaternion, normal
+
+
+
+    def box_midpoint(self, p1, p2, p3, p4):
+        p1, p2, p3, p4 = map(np.array, (p1, p2, p3, p4))
+        return (p1 + p2 + p3 + p4) / 4.0
 
     def check_goal_reached(self):
       if self.ee_box_collision():
