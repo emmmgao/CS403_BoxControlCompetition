@@ -16,7 +16,7 @@ class BoxControlHandle:
         return self.d.xpos[self.ee_id].copy()
   
     def _get_ee_orientation(self):
-        return self.d.xquat[self.ee_id].copy()
+        return self.d.xquat[self.ee_id].copy() # what info does quatornian have
     
     #set the difficulty (0,1]  
     def set_difficulty(self,d):
@@ -26,7 +26,7 @@ class BoxControlHandle:
     
     
     def get_diff_params(self):
-        return(self.tolerance,self.amp,self.freq)
+        return(self.tolerance,self.amp,self.freq) 
     
     def print_diff_params(self):
         print(self.tolerance,self.amp,self.freq)
@@ -36,42 +36,44 @@ class BoxControlHandle:
             print("You completed in %.2f seconds!"%self.d.time)
             self.completed = True
 
-    def get_EE_pos_err(self):
+    def get_EE_pos_err(self): #position error what use is it?
         box_sensor1_idx = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_SENSOR, "mould_pos_sensor1")
         box_sensor2_idx = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_SENSOR, "mould_pos_sensor2")
         box_sensor3_idx = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_SENSOR, "mould_pos_sensor3")
         box_sensor4_idx = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_SENSOR, "mould_pos_sensor4") 
     
-        boxmould_pos1 = self.d.sensordata[box_sensor1_idx*3:box_sensor1_idx*3+3]
+        boxmould_pos1 = self.d.sensordata[box_sensor1_idx*3:box_sensor1_idx*3+3] # what happen here: getting the positions which are x, y, th?
         boxmould_pos2 = self.d.sensordata[box_sensor2_idx*3:box_sensor2_idx*3+3]
         boxmould_pos3 = self.d.sensordata[box_sensor3_idx*3:box_sensor3_idx*3+3]
         boxmould_pos4 = self.d.sensordata[box_sensor4_idx*3:box_sensor4_idx*3+3]
 
-        box_ori,_ = self.box_orientation(boxmould_pos1, boxmould_pos2,boxmould_pos3,boxmould_pos4)
-        target_ori = self.rotate_quat_90_y(box_ori)
+        box_ori,_ = self.box_orientation(boxmould_pos1, boxmould_pos2,boxmould_pos3,boxmould_pos4) # the orientation as opposed to world frame?
+        #what is the result
+        target_ori = self.rotate_quat_90_y(box_ori) # rotate 90 degrees
+        #what is the result? 4 new positions
 
-        final_position = self.box_midpoint(boxmould_pos1, boxmould_pos2, boxmould_pos3, boxmould_pos4)
+        final_position = self.box_midpoint(boxmould_pos1, boxmould_pos2, boxmould_pos3, boxmould_pos4)  #new position of the box, what is it? an orientation
    
-        target_ori_rtx = self.quat2SO3(target_ori)
-        mid_target = final_position + target_ori_rtx @ np.array([-0.15,0,0.0])
+        target_ori_rtx = self.quat2SO3(target_ori) # the orientation we want
+        mid_target = final_position + target_ori_rtx @ np.array([-0.15,0,0.0])  #why @ with that specific numpy array
         final_position += target_ori_rtx @ np.array([0.02,0,0.0])
     
         pre_time = 3
-        if self.d.time < pre_time:
+        if self.d.time < pre_time: #what is self.d.time, what is pre_time
             target_position = mid_target 
         else:
-            target_position = self.pos_interpolate(mid_target, final_position, self.d.time-pre_time, 5)
+            target_position = self.pos_interpolate(mid_target, final_position, self.d.time-pre_time, 5) #what is pos_interpolate
         EE_pos = self._get_ee_position()
         pos_err = (target_position - EE_pos)
         return pos_err
 
     def check_goal_reached(self):
-      if self.ee_box_collision():
+      if self.ee_box_collision(): #turn box_mould green if reached
           box_body_id = mujoco.mj_name2id(self.m, 1, "box_mould")
           geom_ids = np.where(self.m.geom_bodyid == box_body_id)[0]
           green_color = np.array([0.0, 1.0, 0.0, 1.0])  # Green color
           for geom_id in geom_ids:
-            self.m.geom_rgba[geom_id] = green_color
+            self.m.geom_rgba[geom_id] = green_color 
           self.d.ctrl[:6] = 0
           return True
       return False
@@ -108,12 +110,12 @@ class BoxControlHandle:
         x_axis /= np.linalg.norm(x_axis)
         y_axis = np.cross(normal, x_axis)
         y_axis /= np.linalg.norm(y_axis)  
-        R_matrix = np.column_stack((x_axis, y_axis, normal))
+        R_matrix = np.column_stack((x_axis, y_axis, normal)) # Rotation Matrix
         R_matrix += 1e-6 * np.eye(3)
 
         try:
-            U, _, Vt = np.linalg.svd(R_matrix)
-            R_matrix = U @ Vt  
+            U, _, Vt = np.linalg.svd(R_matrix) # what is svd
+            R_matrix = U @ Vt   # what are we multiplying here
         except np.linalg.LinAlgError:
             print("SVD failed. Using fallback method.")
             R_matrix = np.eye(3)  
@@ -121,19 +123,19 @@ class BoxControlHandle:
 
         return quaternion, normal
     
-    def box_midpoint(self, p1, p2, p3, p4):
+    def box_midpoint(self, p1, p2, p3, p4): #get the center of the box? what is the return type, the input type
         p1, p2, p3, p4 = map(np.array, (p1, p2, p3, p4))
         midpoint = (p1 + p2 + p3 + p4) / 4.0
         return midpoint   
     
-    def pos_interpolate(self,initial_pos, target_pos, current_time, total_time):
+    def pos_interpolate(self,initial_pos, target_pos, current_time, total_time): #what does this do? 
   
         t = np.clip(current_time / total_time, 0, 1)
         cos_t = (1 - np.cos(np.pi * t)) / 2
         interpolated_pos = (1 - cos_t) * np.array(initial_pos) + cos_t * np.array(target_pos)
         return interpolated_pos
     
-    def ee_box_collision(self):
+    def ee_box_collision(self): # check if collision (goes in the hole)
      
         ee_id    = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_BODY, "EE_box")
         plate_id = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_BODY, "detection_plate")
