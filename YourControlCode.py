@@ -50,19 +50,20 @@ class YourCtrl:
       q_hist.append(self.d.qpos[:6].copy())
       
       self.d.qpos[:6] += lr * dq
-      for i in range(6):
-        self.d.qpos[i] = np.clip(self.d.qpos[i], self.m.jnt_range[i][0], self.m.jnt_range[i][1]) 
+      
+      # for i in range(6):
+      #   self.d.qpos[i] = np.clip(self.d.qpos[i], self.m.jnt_range[i][0], self.m.jnt_range[i][1]) 
     
       mujoco.mj_forward(self.m, self.d) #update the jacobian at each change
       #put the new positions in q_hist, or just get the last one here. 
+      
     
     self.d.qpos[:6] = original_qpos
     mujoco.mj_forward(self.m, self.d)
       
     return q_hist, error_hist
-      #
-  
-  #Find joint limits
+
+    #Find joint limits
   #gause newton: need step size
   def update(self):
     if self.start_time is None:
@@ -70,34 +71,30 @@ class YourCtrl:
 
     box_sensor_names = ["mould_pos_sensor1", "mould_pos_sensor2", "mould_pos_sensor3", "mould_pos_sensor4"]
     box_sensors = []
-    try:
-      for name in box_sensor_names:
-        idx = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_SENSOR, name)
-        pos = self.d.sensordata[idx*3 : idx*3+3]
-        box_sensors.append(pos)
+    
+    for name in box_sensor_names:
+      idx = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_SENSOR, name)
+      pos = self.d.sensordata[idx*3 : idx*3+3]
+      box_sensors.append(pos)
 
-      target_quat, _ = self.boxCtrlhdl.box_orientation(*box_sensors)
-      if target_quat is None:
-          print("[update] Using fallback q_home due to bad box orientation.")
-          self.q_target = self.q_home.copy()
+    target_quat, _ = self.boxCtrlhdl.box_orientation(*box_sensors)
 
-      else:
-        target_quat = self.boxCtrlhdl.rotate_quat_90_y(target_quat)
+    target_quat = self.boxCtrlhdl.rotate_quat_90_y(target_quat)
 
-        pos_err = self.boxCtrlhdl.get_EE_pos_err()
-        target_pos = self.boxCtrlhdl._get_ee_position() + pos_err
+    pos_err = self.boxCtrlhdl.get_EE_pos_err()
+    target_pos = self.boxCtrlhdl._get_ee_position() + pos_err
 
-        q_hist, err_hist = self.newton_raphson(target_pos, target_quat, num_steps=10, lr=0.05)
-
+    q_hist, err_hist = self.newton_raphson(target_pos, target_quat, num_steps=10, lr=0.8)
+    if q_hist:
         q_target = q_hist[-1]
+    else:
+        print("[update] IK failed — reverting to home")
+        q_target = self.q_home.copy()
         
-    except ValueError as e:
-            print(f"[update] IK or orientation failed: {e}")
-            # Fallback: return to original pose
-            self.q_target = self.q_home.copy()
-
+  
     for i in range(6):
       self.d.ctrl[i] = 150.0*(q_target[i] - self.d.qpos[i])  - 5.2 *self.d.qvel[i]
+    
        
 
 
