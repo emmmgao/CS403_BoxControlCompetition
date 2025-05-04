@@ -11,7 +11,7 @@ class YourCtrl:
     self.init_qpos = d.qpos.copy()
 
     self.boxCtrlhdl = BoxControlHandle(self.m,self.d)
-    self.boxCtrlhdl.set_difficulty(0.25) #set difficulty level
+    self.boxCtrlhdl.set_difficulty(0.1) #set difficulty level
     
     self.start_time = None
     self.q_target = None
