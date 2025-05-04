@@ -13,8 +13,9 @@ class YourCtrl:
         self.init_qpos = d.qpos.copy()  # Save initial joint positions
 
         # Instantiate box controller and set task difficulty level
+        self.difficulty = 0.8
         self.boxCtrlhdl = BoxControlHandle(self.m, self.d)
-        self.boxCtrlhdl.set_difficulty(0.95)
+        self.boxCtrlhdl.set_difficulty(self.difficulty)
         print("Initial Position(qpos):", self.d.qpos[:6])
 
         # Initialize internal state
@@ -97,7 +98,6 @@ class YourCtrl:
         ### Or Use given function get_EE_pos_err, but performs not that well
         # pos_err = self.boxCtrlhdl.get_EE_pos_err()
 
-
         target_pos = self.boxCtrlhdl._get_ee_position() + pos_err
 
         # Solve IK to get target joint configuration
@@ -127,9 +127,17 @@ class YourCtrl:
                 writer.writerow(row)
 
         # PD control: apply torque to drive joints to target configuration
-        for i in range(6):
-            self.d.ctrl[i] = 150.0 * (q_target[i] - self.d.qpos[i]) - 5.2 * self.d.qvel[i]
-
+        if self.difficulty > 0.6:
+            for i in range(6):
+                self.d.ctrl[i] = 150.0 * (q_target[i] - self.d.qpos[i]) - 5.2 * self.d.qvel[i]
+        else:
+            dt = max(self.d.time - getattr(self, "t_prev", self.d.time), 1e-4)
+            if not hasattr(self, "q_target_prev"):
+                vel_ff = np.zeros(6)
+            else:
+                vel_ff = (q_target - self.q_target_prev) / dt
+            for i in range(6):
+                self.d.ctrl[i] = 150 * (q_target[i] - self.d.qpos[i]) + 25 * (vel_ff[i] - self.d.qvel[i])
     # Custom function to compute desired EE position error toward an insertion point
     def compute_custom_pos_err(self):
         try:
