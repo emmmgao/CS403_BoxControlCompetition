@@ -12,9 +12,9 @@ class YourCtrl:
         self.d = d
         self.init_qpos = d.qpos.copy()  # Save initial joint positions
 
-        # Instantiate box controller and set task difficulty level
+        # Instantiate box controller
         self.boxCtrlhdl = BoxControlHandle(self.m, self.d)
-        self.boxCtrlhdl.set_difficulty(0.95)
+        self.boxCtrlhdl.set_difficulty(0.2) # set task difficulty level
         print("Initial Position(qpos):", self.d.qpos[:6])
 
         # Initialize internal state
@@ -96,7 +96,6 @@ class YourCtrl:
 
         ### Or Use given function get_EE_pos_err, but performs not that well
         # pos_err = self.boxCtrlhdl.get_EE_pos_err()
-
 
         target_pos = self.boxCtrlhdl._get_ee_position() + pos_err
 
